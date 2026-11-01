@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "工作区 IPC 与命令行",
+    "description": "通过本地 socket 或命名管道，使用独立 dsh-workspace 命令管理当前运行 profile 的工作区，不启动额外 DSH 进程。"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "name": "dsh-workspace-ipc",
+  "version": "0.1.0",
+  "description": "Local workspace JSON-RPC IPC for the running DeepSeek Harness profile, with an independent native dsh-workspace CLI.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22",
+    "dsh": ">=0.2.1-rc.2 <0.3.0"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "src/*.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "docs/protocol.md",
+    "THIRD_PARTY_NOTICES.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check": "node scripts/check-package.mjs",
+    "test:cli": "go -C cli test ./...",
+    "build:cli": "node scripts/build-cli.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Workspace IPC & CLI",
+    "description": "Manage workspaces in this running profile from the native dsh-workspace CLI over a local socket or named pipe. No extra DSH profile is started."
+  }
+}

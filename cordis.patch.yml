@@ -1,0 +1,4 @@
+- insert:
+    - id: workspace-ipc
+      name: dsh-workspace-ipc
+      config: {}
