@@ -1,0 +1,32 @@
+# This project uses command: check, NOT run: upstream run requires LLM sessions.
+# Official schema: royenheart/dsh-migrate-bot v1.0.0-rc.4.
+target: latest
+
+tests:
+  commands:
+    - npm run check
+    - npm test
+
+checks:
+  cards:
+    enabled: false
+  boot:
+    enabled: true
+  # This Host-only plugin has no dsh.client surface or browser suite.
+  web:
+    enabled: false
+  e2e:
+    enabled: false
+    publish: false
+
+agent:
+  upgradeSkills: false
+
+reports:
+  enabled: false
+
+deploy:
+  enabled: false
+
+timeouts:
+  commandMs: 900000
