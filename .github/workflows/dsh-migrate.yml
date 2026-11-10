@@ -19,7 +19,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/dsh-migrate.yml
-      - .github/dsh-migrate.yml
+      - .github/dsh-migrate-config.yml
       - scripts/dsh-migrate.mjs
       - scripts/check-dsh-host.mjs
       - test/dsh-migrate.test.mjs
@@ -83,7 +83,7 @@ jobs:
         with:
           command: check
           target: ${{ steps.prepare.outputs.target_tag }}
-          config: .github/dsh-migrate.yml
+          config: .github/dsh-migrate-config.yml
           skip_github: 'true'
 
       - id: host

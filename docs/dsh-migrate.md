@@ -8,7 +8,7 @@
 
 - 每天 **03:00 UTC（北京时间 11:00）**检查新版本。
 - GitHub Actions 的 **dsh-migrate → Run workflow** 可手动触发。
-- 修改工作流、[bot 配置](../.github/dsh-migrate.yml)、[更新脚本](../scripts/dsh-migrate.mjs)或[回归测试](../test/dsh-migrate.test.mjs)并推送到 `main` 时，自动验证一次。
+- 修改工作流、[bot 配置](../.github/dsh-migrate-config.yml)、[更新脚本](../scripts/dsh-migrate.mjs)或[回归测试](../test/dsh-migrate.test.mjs)并推送到 `main` 时，自动验证一次。
 - `dsh_release` 留空使用 `latest`，也接受 `0.2.2-rc.1` 或 `dsh-v0.2.2-rc.1`。
 - `migrate_again: true` 只重新检查当前版本；不会降级，也不会触发修复。
 
@@ -32,7 +32,7 @@
 
 ## 为什么使用真实 Web profile
 
-插件的硬依赖 `workspaceRegistry` 由目标版本的 [Web bundle](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.1/packages/bundle/web-app/cordis.patch.yml)提供。bot 的默认 headless 探针只加载 base + headless，因而会报告 `pending: workspaceRegistry`；内置 Web 检查又会跳过没有 `dsh.client` 的 Host 插件。因此[bot 配置](../.github/dsh-migrate.yml)禁用这两个不适用的内置入口，改为工作流中**必须成功的真实 Web profile + 原生 IPC 握手检查**，并非跳过插件启动验证。插件源码及其注入契约保持不变。
+插件的硬依赖 `workspaceRegistry` 由目标版本的 [Web bundle](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.1/packages/bundle/web-app/cordis.patch.yml)提供。bot 的默认 headless 探针只加载 base + headless，因而会报告 `pending: workspaceRegistry`；内置 Web 检查又会跳过没有 `dsh.client` 的 Host 插件。因此[bot 配置](../.github/dsh-migrate-config.yml)禁用这两个不适用的内置入口，改为工作流中**必须成功的真实 Web profile + 原生 IPC 握手检查**，并非跳过插件启动验证。插件源码及其注入契约保持不变。
 
 ## 凭证与设置
 

@@ -130,6 +130,8 @@ test('The workflow runs the official check entrypoint, never an LLM migration or
   const workflow = await readFile(new URL('../.github/workflows/dsh-migrate.yml', import.meta.url), 'utf8');
   assert.match(workflow, /royenheart\/dsh-migrate-bot@[a-f0-9]{40}/);
   assert.match(workflow, /command: check/);
+  assert.match(workflow, /config: \.github\/dsh-migrate-config\.yml/);
+  assert.doesNotMatch(workflow, /\.github\/dsh-migrate\.yml/);
   assert.doesNotMatch(workflow, /command: run|DEEPSEEK_API_KEY|secrets: inherit|git push[^\n]*--force/);
   assert.match(workflow, /persist-credentials: false/);
   assert.match(workflow, /contents: read/);
