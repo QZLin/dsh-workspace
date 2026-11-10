@@ -10,8 +10,10 @@ tests:
 checks:
   cards:
     enabled: false
+  # The built-in headless profile has no workspaceRegistry. The workflow
+  # requires check-dsh-host.mjs (real Web profile + native CLI IPC ping) instead.
   boot:
-    enabled: true
+    enabled: false
   # This Host-only plugin has no dsh.client surface or browser suite.
   web:
     enabled: false

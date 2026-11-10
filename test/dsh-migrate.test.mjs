@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { compareReleases, latestRelease, parseRelease, planUpgrade, prepareUpgrade } from '../scripts/dsh-migrate.mjs';
+import { checkHost, scrubProbeLog } from '../scripts/check-dsh-host.mjs';
 
 const fixture = () => ({
   name: 'dsh-workspace-ipc', version: '0.1.0',
@@ -134,4 +135,53 @@ test('The workflow runs the official check entrypoint, never an LLM migration or
   assert.match(workflow, /contents: read/);
   assert.match(workflow, /contents: write/);
   assert.match(workflow, /sha256sum --check --strict/);
+  assert.match(workflow, /DSH_MIGRATE_CLI=\/github\/workspace\/scripts\/check-dsh-host\.mjs/);
+  assert.match(workflow, /CGO_ENABLED=0 go -C cli build/);
+});
+
+test('The Host probe requires the real Web profile and a read-only native IPC handshake', async () => {
+  let home;
+  let stopped = 0;
+  const checked = await checkHost({ version: '0.2.2-rc.1',
+    install: (version) => { assert.equal(version, '0.2.2-rc.1'); return { ok: true, bin: 'unused-test-dsh' }; },
+    start: async (options) => {
+      assert.equal(options.profile, 'probe-web');
+      home = options.homeDir;
+      return { ok: true, host: { stop() { stopped++; } } };
+    },
+    runCli: (binary, args) => {
+      assert.equal(binary.endsWith('dsh-workspace-probe'), true);
+      assert.deepEqual(args, ['ping', '--dshHome', home, '--json']);
+      return { status: 0, stdout: JSON.stringify({ service: 'dsh-workspace', protocolVersion: 1, profile: null }) };
+    },
+  });
+  assert.equal(checked.tag, 'dsh-v0.2.2-rc.1');
+  assert.equal(stopped, 1);
+});
+
+test('A Web profile that cannot provide the plugin services fails instead of skipping', async () => {
+  await assert.rejects(checkHost({ version: '0.2.2-rc.1',
+    install: () => ({ ok: true, bin: 'unused-test-dsh' }),
+    start: async () => ({ ok: false, failure: { signature: 'pending: workspaceRegistry', detail: 'missing provider' } }),
+    runCli: () => assert.fail('A failed boot must not reach the native CLI'),
+  }), /pending: workspaceRegistry/);
+});
+
+test('A server-ready line alone is insufficient when IPC is absent or has the wrong identity', async () => {
+  for (const reply of [{ status: 3, stderr: 'connection refused' },
+    { status: 0, stdout: JSON.stringify({ service: 'other-service', protocolVersion: 1 }) }]) {
+    let stopped = 0;
+    await assert.rejects(checkHost({ version: '0.2.2-rc.1',
+      install: () => ({ ok: true, bin: 'unused-test-dsh' }),
+      start: async () => ({ ok: true, host: { stop() { stopped++; } } }),
+      runCli: () => reply,
+    }), /IPC ping failed|unexpected workspace IPC identity/);
+    assert.equal(stopped, 1);
+  }
+});
+
+test('Web launch tokens are redacted before Host check diagnostics are uploaded', () => {
+  const log = scrubProbeLog('URL: http://127.0.0.1:123/?token=test-only-sensitive-token&next=1\n');
+  assert.equal(log.includes('test-only-sensitive-token'), false);
+  assert.match(log, /token=<redacted>&next=1/);
 });

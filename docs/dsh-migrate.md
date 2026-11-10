@@ -25,10 +25,14 @@
 
 工作流分为两项任务：
 
-- **verify（只读）**：检出默认分支的精确提交，不保留 checkout 凭证；运行原生 Go CLI 测试，再由 bot 在目标 DSH 上运行包检查、Node 测试和 keyless 启动检查。插件没有 `dsh.client`，因此关闭浏览器、agent-authored e2e 和 change-card 检查。
+- **verify（只读）**：检出默认分支的精确提交，不保留 checkout 凭证；运行 Go CLI 测试并编译静态原生 CLI，再由 bot 运行包检查和 Node 测试。[Host 启动探针](../scripts/check-dsh-host.mjs)随后使用同一固定 bot 容器的 `startWebHost` / `ensureDsh`，在目标 DSH 的真实 Web profile 中加载插件，并用原生 CLI 的只读 `ping` 确认插件已激活。Web server-ready 和正确的 IPC 服务 / 协议身份两者缺一不可；不启动浏览器，也不调用模型。
 - **publish（可写）**：仅在所有检查成功且版本清单有变化时运行。下载同一次运行的清单并验证 SHA-256，只提交该清单，然后普通推送到默认分支。检查过程中默认分支若有其他提交，推送会被拒绝；不会强制覆盖，也不会在未重新检查的情况下自动 rebase。
 
 同一仓库的工作流串行运行。发布版本清单不会再次触发自身的 `push` 条件，避免循环。
+
+## 为什么使用真实 Web profile
+
+插件的硬依赖 `workspaceRegistry` 由目标版本的 [Web bundle](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.1/packages/bundle/web-app/cordis.patch.yml)提供。bot 的默认 headless 探针只加载 base + headless，因而会报告 `pending: workspaceRegistry`；内置 Web 检查又会跳过没有 `dsh.client` 的 Host 插件。因此[bot 配置](../.github/dsh-migrate.yml)禁用这两个不适用的内置入口，改为工作流中**必须成功的真实 Web profile + 原生 IPC 握手检查**，并非跳过插件启动验证。插件源码及其注入契约保持不变。
 
 ## 凭证与设置
 
@@ -38,7 +42,7 @@
 
 ## 检查失败时
 
-任何版本解析、GitHub API、Go 测试、bot 检查、清单摘要或推送错误都会使工作流失败。失败时不会发布升级，不会调用 LLM 修复；查看运行日志和 `dsh-check-logs` artifact 后由维护者处理。该 artifact 保留 7 天，包含 bot 能产生的完整 mechanical / boot 检查日志。
+任何版本解析、GitHub API、Go 测试、bot 检查、清单摘要或推送错误都会使工作流失败。失败时不会发布升级，不会调用 LLM 修复；查看运行日志和 `dsh-check-logs` artifact 后由维护者处理。该 artifact 保留 7 天，包含 bot 的完整 mechanical 检查日志，以及真实 Web Host / 原生 IPC 探针能产生的诊断。
 
 bot 的启动探针使用占位凭证和不可用的本地模型端点，目的是证明插件加载和激活，不发送实际模型请求。[官方检查实现](https://github.com/royenheart/dsh-migrate-bot/blob/v1.0.0-rc.4/src/activities/check-tree.ts)与[启动探针](https://github.com/royenheart/dsh-migrate-bot/blob/v1.0.0-rc.4/src/verify/boot.ts)说明了这一点。
 

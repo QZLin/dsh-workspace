@@ -151,7 +151,7 @@ dsh-workspace list --endpoint /data/dsh/.dsh-workspace.sock
 
 ## 自动适配 DSH 版本（无 LLM）
 
-[自动升级工作流](.github/workflows/dsh-migrate.yml)每天北京时间 11:00 检查最新 DSH 标签（包括预发布版），也可在 GitHub Actions 手动运行。它使用 [dsh-migrate-bot](https://github.com/royenheart/dsh-migrate-bot) 的 keyless `check` 入口；只有 Go / Node 测试和目标 DSH 启动检查全部通过，才自动将 `engines.dsh` 更新提交到 `main`。失败直接停止，不调用 LLM 审查或修复，也不需要 DeepSeek API key。
+[自动升级工作流](.github/workflows/dsh-migrate.yml)每天北京时间 11:00 检查最新 DSH 标签（包括预发布版），也可在 GitHub Actions 手动运行。它使用 [dsh-migrate-bot](https://github.com/royenheart/dsh-migrate-bot) 的 keyless `check` 入口；只有 Go / Node 测试、目标 DSH Web profile 启动和原生 IPC 握手全部通过，才自动将 `engines.dsh` 更新提交到 `main`。失败直接停止，不调用 LLM 审查或修复，也不需要 DeepSeek API key。
 
 它不修改插件源码、插件自身版本或本机 DSH，不发布 npm 包。运行参数、权限隔离、拒绝降级和故障处理见[自动升级说明](docs/dsh-migrate.md)。
 

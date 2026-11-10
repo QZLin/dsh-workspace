@@ -21,6 +21,7 @@ on:
       - .github/workflows/dsh-migrate.yml
       - .github/dsh-migrate.yml
       - scripts/dsh-migrate.mjs
+      - scripts/check-dsh-host.mjs
       - test/dsh-migrate.test.mjs
 
 # Checks never receive a write-enabled checkout credential.
@@ -68,9 +69,12 @@ jobs:
           go-version: stable
           cache-dependency-path: cli/go.sum
 
-      - name: Test the independent native CLI
+      - name: Test and build the independent native CLI
         if: steps.prepare.outputs.should_check == 'true'
-        run: go -C cli test ./...
+        run: |
+          go -C cli test ./...
+          mkdir -p .tmp
+          CGO_ENABLED=0 go -C cli build -o ../.tmp/dsh-workspace-probe .
 
       - id: check
         name: Check the plugin on the target DSH (no LLM)
@@ -81,6 +85,18 @@ jobs:
           target: ${{ steps.prepare.outputs.target_tag }}
           config: .github/dsh-migrate.yml
           skip_github: 'true'
+
+      - id: host
+        name: Check the real Web Host profile and native IPC (no LLM)
+        if: steps.prepare.outputs.should_check == 'true'
+        env:
+          TARGET_VERSION: ${{ steps.prepare.outputs.target_version }}
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/github/workspace" \
+            --workdir /github/workspace \
+            --env DSH_MIGRATE_CLI=/github/workspace/scripts/check-dsh-host.mjs \
+            ghcr.io/royenheart/dsh-migrate-bot:v1.0.0-rc.4 "$TARGET_VERSION"
 
       - name: Ensure checks did not modify the candidate manifest
         if: steps.prepare.outputs.should_check == 'true'
