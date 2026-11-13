@@ -6,7 +6,7 @@
   "license": "MIT",
   "engines": {
     "node": ">=22",
-    "dsh": ">=0.2.2-rc.2 <0.3.0"
+    "dsh": ">=0.2.2-rc.3 <0.3.0"
   },
   "exports": {
     ".": "./index.js",
