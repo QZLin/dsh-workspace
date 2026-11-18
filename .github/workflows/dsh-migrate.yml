@@ -1,12 +1,12 @@
 name: dsh-migrate
 
-# Mirrors QZLin/dsh-migrate-bot's reusable workflow at v3, with two differences:
-# the schedule is disabled, and Go is set up before the Action because the
-# configured checks build and test cli/. Everything else the Action needs at
-# runtime is installed by the Action itself.
+# QZLin/dsh-migrate-bot v3: bump the DSH ranges, run our checks, propose the
+# result. Two differences from v3's reusable workflow: the schedule is disabled
+# here, and Go is installed before the Action because the checks build and test
+# cli/. The Action installs everything else it needs on the runner.
 #
-# The migration configuration is inline: the step below writes a scratch file and
-# hands its path to the Action, so the repository keeps no separate config file.
+# The migration configuration is inline: v3 takes a file path, so the step below
+# writes it under the git-ignored .tmp/ and hands that path over.
 on:
   # schedule:
     # 03:00 UTC / 11:00 Asia/Shanghai.
@@ -23,7 +23,6 @@ on:
         type: boolean
         default: false
 
-# v3 records migration state and publishes proposal branches, issues, and PRs.
 permissions:
   contents: write
   issues: write
@@ -46,44 +45,27 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
 
-      # The inline configuration lives under .tmp/, which is git-ignored, so v3
-      # never stages it into the proposal branch.
-      - name: Write the inline migration configuration
+      - name: Write the migration configuration
         run: |
           mkdir -p .tmp
           cat > .tmp/dsh-migrate-config.yml <<'YAML'
           target: latest
-
           bump:
-            # A compatibility proposal must not silently publish a new release.
             ownVersion: false
-
-          # These commands replace v3's built-in mechanical suite and run in the
-          # plugin root; the first failure stops the migration.
           tests:
             commands:
               - npm run check
               - npm test
               - go -C cli test ./...
-              - mkdir -p .tmp && CGO_ENABLED=0 go -C cli build -o ../.tmp/dsh-workspace-probe .
+              - CGO_ENABLED=0 go -C cli build -o ../.tmp/dsh-workspace-probe .
               - node scripts/check-dsh-host.mjs
-
           checks:
-            # The built-in headless profile has no workspaceRegistry. The probe
-            # above boots the real Web composition and pings the native CLI.
             boot:
               enabled: false
-            # This Host-only plugin has no dsh.client surface; the probe above
-            # covers it instead.
             web:
               enabled: false
-
-          timeouts:
-            commandMs: 900000
           YAML
-          test -s .tmp/dsh-migrate-config.yml
 
-      # The configured mechanical suite tests and builds the independent native CLI.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable
@@ -98,7 +80,7 @@ jobs:
           force: ${{ inputs.bump_again || false }}
           config: .tmp/dsh-migrate-config.yml
 
-      - name: Keep full check diagnostics, including failures
+      - name: Keep check diagnostics, including failures
         if: always() && steps.migrate.outcome != 'skipped'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

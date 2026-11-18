@@ -16,6 +16,14 @@ assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml');
 assert.deepEqual(inject, ['workspaceRegistry']);
 assert.equal(Object.keys(pkg.dependencies ?? {}).length, 0);
 assert.equal(Object.keys(pkg.devDependencies ?? {}).length, 0);
+// The compatibility floor is stated twice on purpose: engines.dsh gates the host
+// profile, and the optional peer names the package that provides workspaceRegistry.
+// Both must agree, and the peer must stay optional so installing the plugin never
+// pulls a private harness package.
+assert.equal(pkg.peerDependencies['@deepseek-ai/dsh-workspace'], pkg.engines.dsh);
+assert.equal(pkg.peerDependenciesMeta['@deepseek-ai/dsh-workspace'].optional, true);
+assert.deepEqual(Object.keys(pkg.peerDependencies), ['@deepseek-ai/dsh-workspace']);
+assert.deepEqual(Object.keys(pkg.peerDependenciesMeta), ['@deepseek-ai/dsh-workspace']);
 assert.ok(!pkg.scripts?.preinstall && !pkg.scripts?.install && !pkg.scripts?.postinstall);
 for (const path of ['index.js', 'src/endpoint.js', 'src/rpc.js', 'src/server.js', 'cordis.patch.yml', 'icon.svg', 'README.md', 'docs/protocol.md', 'LICENSE']) {
   assert.ok((await stat(join(root, path))).isFile(), `${path} is missing`);

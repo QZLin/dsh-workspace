@@ -17,21 +17,31 @@
 
 ## 最低支持范围
 
-[包清单](../package.json)中的 DSH 兼容范围保持为：
+[包清单](../package.json)同时用 `engines.dsh` 和 `peerDependencies` 声明 DSH 兼容范围，两者的范围必须一致：
 
 ```json
-"dsh": ">=0.2.0 <0.3.0"
+"engines": {
+  "dsh": ">=0.2.0 <0.3.0"
+},
+"peerDependencies": {
+  "@deepseek-ai/dsh-workspace": ">=0.2.0 <0.3.0"
+},
+"peerDependenciesMeta": {
+  "@deepseek-ai/dsh-workspace": { "optional": true }
+}
 ```
 
-`>=0.2.0` 是项目声明的最低支持版本。自动迁移**不得提高这个下限，也不会改写 `engines.dsh`**；是否放弃旧版支持或扩大上界由维护者根据实际验证结果决定。
+- `engines.dsh` 是宿主侧的门槛，用于判断当前 DSH 是否在支持范围内；**v3 从不改写它**。
+- `peerDependencies` 指名本插件注入的 `workspaceRegistry` 由哪个包提供（`@deepseek-ai/dsh-workspace`）。`peerDependenciesMeta.optional` 让它在安装时不被自动拉取——该包是受限发布的 harness 包，应由 DSH profile 提供，而不是随插件安装。
+- `>=0.2.0` 是项目声明的最低支持版本，自动迁移**不得提高这个下限**；是否放弃旧版支持或扩大上界由维护者根据实际验证结果决定。
 
-v3 对 `@deepseek-ai/dsh-*` 包采用自己的依赖策略：
+v3 对 `@deepseek-ai/dsh-*` 包的更新策略与上面一致：
 
-- `peerDependencies`、`dependencies`、`optionalDependencies` 保留原下限；当前范围不包含目标版本时才追加兼容分支。
+- `peerDependencies`、`dependencies`、`optionalDependencies` 保留原下限；当前范围不包含目标版本时才追加 `|| ^<target>` 兼容分支。
 - `devDependencies` 移到目标版本。
 - 本项目设置 `bump.ownVersion: false`，因此不会自动提高插件自身版本。
 
-本项目目前没有这些 npm 依赖，所以通常不会产生清单 diff；检查通过后，目标版本仍会在 state 分支中记为已验证。目标版本若超出 `engines.dsh` 或不能实际加载，检查失败，不会自动放宽范围。
+所以目标版本超出当前范围时，proposal 只会在 `peerDependencies` 上追加分支，`engines.dsh` 保持原样。若目标版本不能实际加载，检查失败，不会自动放宽任何范围。
 
 ## state、proposal 与 PR
 
@@ -55,7 +65,7 @@ v3 将持久状态写入 `dsh-migrate/state`，每次迁移一份事件日志，
 4. 编译 Linux 静态原生 CLI 到 `.tmp/dsh-workspace-probe`
 5. 运行[真实 Web Host 探针](../scripts/check-dsh-host.mjs)
 
-本插件的硬依赖 `workspaceRegistry` 来自 DSH Web composition。v3 的内置 headless boot profile 不提供该服务，而本插件又没有 `dsh.client` 浏览器入口，因此配置关闭内置 `boot` / `web` 检查，改用必须成功的项目专用探针：
+本插件的硬依赖 `workspaceRegistry` 来自 DSH Web composition（由 `@deepseek-ai/dsh-workspace` 提供）。v3 的内置 headless boot profile 不提供该服务，而本插件又没有 `dsh.client` 浏览器入口，因此配置关闭内置 `boot` / `web` 检查，改用必须成功的项目专用探针：
 
 - 从固定的 v3 Action checkout 导入 `ensureDsh` 与 `startWebHost`。
 - 安装并启动本次迁移已解析出的目标 DSH，在真实 Web profile 中加载插件。
@@ -89,4 +99,4 @@ node --check scripts/check-dsh-host.mjs
 
 完整目标 DSH 的 Web Host / IPC 检查需要 v3 Action 提供已编译的检查模块和目标版本环境变量，正常由 GitHub 的 Linux runner 执行，不会启动或修改本机当前的 DSH profile。
 
-[回归测试](../test/dsh-migrate.test.mjs)覆盖 v3 工作流约束、内联配置的键与检查命令、`>=0.2.0` 下限保持，以及 Web profile 与 IPC 握手的失败路径。升级 bot 本身时需重新核对 v3 schema、`@v3` 指向的版本与这些项目专用导入路径。
+[回归测试](../test/dsh-migrate.test.mjs)覆盖 v3 工作流约束、内联配置的键与检查命令、`engines.dsh` 与 `peerDependencies` 的一致性、`>=0.2.0` 下限保持，以及 Web profile 与 IPC 握手的失败路径。升级 bot 本身时需重新核对 v3 schema、`@v3` 指向的版本与这些项目专用导入路径。

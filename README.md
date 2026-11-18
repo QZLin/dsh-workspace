@@ -153,7 +153,7 @@ dsh-workspace list --endpoint /data/dsh/.dsh-workspace.sock
 
 [自动迁移工作流](.github/workflows/dsh-migrate.yml)在 GitHub Actions 手动运行（`workflow_dispatch`），检查最新 DSH 标签（包括预发布版）。它使用 [QZLin/dsh-migrate-bot v3](https://github.com/QZLin/dsh-migrate-bot/tree/v3) 的无模型 `bump` 流程；只有 Node / Go 测试、目标 DSH Web profile 启动和原生 IPC 握手全部通过，目标版本才会记为已验证。有依赖变更时由 bot 创建 proposal PR，失败时不调用 LLM 修复。迁移配置内联在工作流内部，仓库不再保留单独的配置文件。
 
-[包清单](package.json)中的最低支持版本保持为 DSH `0.2.0`，自动迁移不会提高该下限，也不会自动修改插件源码、自身版本或 `engines.dsh`。state / proposal 分支、仓库权限、检查边界和故障处理见[自动迁移说明](docs/dsh-migrate.md)。
+[包清单](package.json)用 `engines.dsh` 和可选的 `peerDependencies` 同时声明 DSH 兼容范围，两者都是 `>=0.2.0 <0.3.0`。最低支持版本保持为 DSH `0.2.0`，自动迁移不会提高该下限，也不会自动修改插件源码、自身版本或 `engines.dsh`。state / proposal 分支、仓库权限、检查边界和故障处理见[自动迁移说明](docs/dsh-migrate.md)。
 
 ## 开发与验证
 

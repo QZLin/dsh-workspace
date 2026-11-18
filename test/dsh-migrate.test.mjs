@@ -58,11 +58,19 @@ test('The workflow uses pinned QZLin v3 state and proposal semantics', async () 
   assert.match(config, /^\s+- go -C cli test \.\/\.\.\.$/m);
   assert.match(config, /CGO_ENABLED=0 go -C cli build/);
   assert.match(config, /^\s+- node scripts\/check-dsh-host\.mjs$/m);
-  assert.match(config, /^\s+commandMs: 900000$/m);
+  assert.match(config, /^\s+boot:\s*$/m);
+  assert.match(config, /^\s+web:\s*$/m);
+  assert.equal(config.match(/enabled: false/g)?.length, 2);
+  // Unset keys keep v3's defaults; a timeouts block would only restate them.
+  assert.doesNotMatch(config, /^timeouts:/m);
   assert.doesNotMatch(config, /^\s*(cards|e2e|agent|reports|deploy):/m);
   assert.doesNotMatch(config, /\t/);
 
+  // The floor is declared twice and must agree; the peer stays optional so
+  // installing the plugin never pulls the private harness package.
   assert.equal(manifest.engines.dsh, '>=0.2.0 <0.3.0');
+  assert.equal(manifest.peerDependencies['@deepseek-ai/dsh-workspace'], manifest.engines.dsh);
+  assert.equal(manifest.peerDependenciesMeta['@deepseek-ai/dsh-workspace'].optional, true);
   assert.match(probe, /DSH_MIGRATE_TARGET_VERSION/);
   assert.match(probe, /GITHUB_ACTION_PATH/);
   assert.match(probe, /DSH_MIGRATE_PROBE_API_KEY/);
