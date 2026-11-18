@@ -3,23 +3,38 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { parseRelease } from './dsh-migrate.mjs';
 
+const TAG_PREFIX = 'dsh-v';
+const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 const HOME_PREFIX = 'dsh-workspace-host-probe-';
+
+/** Accept only canonical semver, optionally with DSH's dsh-v tag prefix. */
+export function parseRelease(value) {
+  if (typeof value !== 'string') throw new Error('A DSH release must be a string.');
+  const version = value.startsWith(TAG_PREFIX) ? value.slice(TAG_PREFIX.length) : value;
+  const match = VERSION.exec(version);
+  const prerelease = match?.[4]?.split('.') ?? [];
+  if (!match || match[0] !== version || version.length > 256
+      || match.slice(1, 4).map(Number).some((part) => !Number.isSafeInteger(part))
+      || prerelease.some((part) => /^\d+$/.test(part) && part.length > 1 && part.startsWith('0'))) {
+    throw new Error(`Invalid DSH release: ${value}`);
+  }
+  return { version, tag: `${TAG_PREFIX}${version}` };
+}
 
 /** Never expose a Web launch credential in committed or uploaded diagnostics. */
 export function scrubProbeLog(text) {
   return text.replace(/([?&]token=)[^&#\s"']+/gi, '$1<redacted>');
 }
 
-/** The pinned bot supplies the real Web composition; the native CLI proves activation. */
-export async function checkHost({ workdir = process.cwd(), version, install, start,
+/** The pinned bot Action supplies the real Web composition; the native CLI proves activation. */
+export async function checkHost({ workdir = process.cwd(), version, install, start, cacheRoot,
   runCli = spawnSync } = {}) {
   const release = parseRelease(version);
   const home = await mkdtemp(join(tmpdir(), HOME_PREFIX));
   let host;
   try {
-    const installed = install(release.version, join(workdir, '.dsh-migrate', 'dsh'), { timeoutMs: 900_000 });
+    const installed = install(release.version, cacheRoot ?? join(workdir, '.dsh-migrate', 'dsh'), { timeoutMs: 900_000 });
     if (!installed.ok || !installed.bin) throw new Error(`Target DSH installation failed: ${installed.detail}`);
     const started = await start({
       workdir, bin: installed.bin, dshTag: release.tag, homeDir: home,
@@ -55,22 +70,40 @@ export async function checkHost({ workdir = process.cwd(), version, install, sta
 async function main() {
   let diagnostic;
   try {
-    const appRoot = process.env.DSH_MIGRATE_APP_ROOT;
-    if (!appRoot) throw new Error('Run this check inside the pinned dsh-migrate-bot image, not a local DSH profile.');
+    const appRoot = process.env.DSH_MIGRATE_APP_ROOT ?? process.env.GITHUB_ACTION_PATH;
+    if (!appRoot) {
+      throw new Error('Run this check inside the pinned QZLin/dsh-migrate-bot v3 Action, or set DSH_MIGRATE_APP_ROOT.');
+    }
+    const target = process.argv[2]?.trim() || process.env.DSH_MIGRATE_TARGET_VERSION?.trim();
+    if (!target) throw new Error('The v3 mechanical check did not provide DSH_MIGRATE_TARGET_VERSION.');
+    // Fail on an unusable release before loading any Action module.
+    parseRelease(target);
+    const migrateHome = resolve(process.env.DSH_MIGRATE_HOME?.trim() || '.dsh-migrate');
     // The probe can boot and serve, but can never send a request to a real model.
     process.env.DSH_MIGRATE_PROBE_BASE_URL = 'http://127.0.0.1:9/v1';
-    process.env.DSH_MIGRATE_PROBE_KEY = 'probe-placeholder-key';
-    const [{ ensureDsh }, { startWebHost }] = await Promise.all([
-      import(pathToFileURL(join(appRoot, 'dist/src/verify/dsh-install.js')).href),
-      import(pathToFileURL(join(appRoot, 'dist/src/verify/web.js')).href),
-    ]);
-    const checked = await checkHost({ version: process.argv[2], install: ensureDsh, start: startWebHost });
+    process.env.DSH_MIGRATE_PROBE_API_KEY = 'probe-placeholder-key';
+    let ensureDsh;
+    let startWebHost;
+    try {
+      [{ ensureDsh }, { startWebHost }] = await Promise.all([
+        import(pathToFileURL(join(resolve(appRoot), 'dist/src/verify/dsh-install.js')).href),
+        import(pathToFileURL(join(resolve(appRoot), 'dist/src/verify/web.js')).href),
+      ]);
+    } catch (error) {
+      throw new Error(`The pinned dsh-migrate-bot v3 checkout at ${resolve(appRoot)} does not provide the expected check modules: ${error.message}`);
+    }
+    const checked = await checkHost({
+      version: target,
+      install: ensureDsh,
+      start: startWebHost,
+      cacheRoot: join(migrateHome, 'dsh'),
+    });
     diagnostic = `web-host: pass (${checked.tag})\nnative CLI IPC ping: pass (${checked.service}, protocol ${checked.protocolVersion})\n`;
   } catch (error) {
     diagnostic = `web-host: fail\n${scrubProbeLog(error.message)}\n`;
     process.exitCode = 1;
   }
-  const logs = resolve('.dsh-migrate/runs/host-probe/checks');
+  const logs = resolve(process.env.DSH_MIGRATE_HOME?.trim() || '.dsh-migrate', 'runs/host-probe/checks');
   await mkdir(logs, { recursive: true });
   await writeFile(join(logs, '02-web-host.log'), diagnostic, 'utf8');
   console.log(diagnostic.trimEnd());

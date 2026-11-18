@@ -1,52 +1,82 @@
-# 自动适配 DSH 版本（无 LLM）
+# 自动适配 DSH 版本（dsh-migrate-bot v3，无 LLM）
 
-本项目使用 [dsh-migrate-bot v1.0.0-rc.4](https://github.com/royenheart/dsh-migrate-bot/releases/tag/v1.0.0-rc.4) 的官方 `check` 入口，配合本仓库的确定性版本更新脚本。**不调用 `run`，不启动 agent session，不用 LLM 审查或修复升级错误。** 上游 `run` 入口会在开始时要求 DeepSeek API key，且 `repair.maxAttempts` 最小为 1，因此不能把它配置成零次修复来实现无 LLM。
+本项目使用 [QZLin/dsh-migrate-bot v3](https://github.com/QZLin/dsh-migrate-bot/tree/v3) 的标准 `bump` / state / proposal 流程，引用为 `QZLin/dsh-migrate-bot@v3`（当前指向 `v3.0.3` / `4d304388ccdd0e26ddacc92a3fd52e39517a6695`）。v3 是 composite Action：它不调用模型、不启动 agent session、不修复源码，也不依赖容器镜像。
+
+**迁移配置内联在[工作流](../.github/workflows/dsh-migrate.yml)里，仓库不再保留单独的配置文件。** 工作流先用 heredoc 把配置写进 `.tmp/dsh-migrate-config.yml`，再用 `config:` 把该路径交给 Action；`.tmp/` 已被 Git 忽略，因此这份配置不会被 v3 提交进 proposal 分支。
 
 ## 自动运行
 
-[工作流](../.github/workflows/dsh-migrate.yml)在默认分支运行：
+[工作流](../.github/workflows/dsh-migrate.yml)在默认分支上：
 
-- 每天 **03:00 UTC（北京时间 11:00）**检查新版本。
-- GitHub Actions 的 **dsh-migrate → Run workflow** 可手动触发。
-- 修改工作流、[bot 配置](../.github/dsh-migrate-config.yml)、[更新脚本](../scripts/dsh-migrate.mjs)或[回归测试](../test/dsh-migrate.test.mjs)并推送到 `main` 时，自动验证一次。
-- `dsh_release` 留空使用 `latest`，也接受 `0.2.2-rc.1` 或 `dsh-v0.2.2-rc.1`。
-- `migrate_again: true` 只重新检查当前版本；不会降级，也不会触发修复。
+- **仅手动触发**：GitHub Actions 的 **dsh-migrate → Run workflow**。定时 `schedule` 目前在工作流中注释掉，需要恢复时取消注释即可。
+- `dsh_release` 留空时使用内联配置中的 `target: latest`，也可填写 `0.2.2-rc.1` 或 `dsh-v0.2.2-rc.1`。
+- `latest` 按 semver 选择最大的 `dsh-v*` 标签，包括 alpha / rc 等预发布版本。
+- `bump_again: true` 可重新处理已记录的版本；该版本的 proposal PR 仍打开时不会覆盖它。
 
-`latest` 与 bot 的策略一致：按 semver 选择上游最大的 `dsh-v*` 标签，**包括 alpha / rc 等预发布版本**，不是只选择 GitHub 标记为 stable 的 release。
+同一仓库的运行通过 concurrency group 串行执行，不会并发写 state 或 proposal 分支。
 
-## 更新内容与安全边界
+## 最低支持范围
 
-[更新脚本](../scripts/dsh-migrate.mjs)只更新[包清单](../package.json)的 `engines.dsh`：
+[包清单](../package.json)中的 DSH 兼容范围保持为：
 
-1. 将最低适配版本提高到目标版本。
-2. 保留原有上界；目标达到上界时，DSH `0.x` 使用下一个 minor 为上界，DSH `1.x+` 使用下一个 major。
-3. 不改插件源码、不升插件自身的 `version`、不修改 Node / Go 依赖，也不发布 npm 包或替换本机 DSH。
-4. 已处理版本默认跳过；旧版本输入明确拒绝，不能通过 `migrate_again` 绕过。
+```json
+"dsh": ">=0.2.0 <0.3.0"
+```
 
-工作流分为两项任务：
+`>=0.2.0` 是项目声明的最低支持版本。自动迁移**不得提高这个下限，也不会改写 `engines.dsh`**；是否放弃旧版支持或扩大上界由维护者根据实际验证结果决定。
 
-- **verify（只读）**：检出默认分支的精确提交，不保留 checkout 凭证；运行 Go CLI 测试并编译静态原生 CLI，再由 bot 运行包检查和 Node 测试。[Host 启动探针](../scripts/check-dsh-host.mjs)随后使用同一固定 bot 容器的 `startWebHost` / `ensureDsh`，在目标 DSH 的真实 Web profile 中加载插件，并用原生 CLI 的只读 `ping` 确认插件已激活。Web server-ready 和正确的 IPC 服务 / 协议身份两者缺一不可；不启动浏览器，也不调用模型。
-- **publish（可写）**：仅在所有检查成功且版本清单有变化时运行。下载同一次运行的清单并验证 SHA-256，只提交该清单，然后普通推送到默认分支。检查过程中默认分支若有其他提交，推送会被拒绝；不会强制覆盖，也不会在未重新检查的情况下自动 rebase。
+v3 对 `@deepseek-ai/dsh-*` 包采用自己的依赖策略：
 
-同一仓库的工作流串行运行。发布版本清单不会再次触发自身的 `push` 条件，避免循环。
+- `peerDependencies`、`dependencies`、`optionalDependencies` 保留原下限；当前范围不包含目标版本时才追加兼容分支。
+- `devDependencies` 移到目标版本。
+- 本项目设置 `bump.ownVersion: false`，因此不会自动提高插件自身版本。
 
-## 为什么使用真实 Web profile
+本项目目前没有这些 npm 依赖，所以通常不会产生清单 diff；检查通过后，目标版本仍会在 state 分支中记为已验证。目标版本若超出 `engines.dsh` 或不能实际加载，检查失败，不会自动放宽范围。
 
-插件的硬依赖 `workspaceRegistry` 由目标版本的 [Web bundle](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.1/packages/bundle/web-app/cordis.patch.yml)提供。bot 的默认 headless 探针只加载 base + headless，因而会报告 `pending: workspaceRegistry`；内置 Web 检查又会跳过没有 `dsh.client` 的 Host 插件。因此[bot 配置](../.github/dsh-migrate-config.yml)禁用这两个不适用的内置入口，改为工作流中**必须成功的真实 Web profile + 原生 IPC 握手检查**，并非跳过插件启动验证。插件源码及其注入契约保持不变。
+## state、proposal 与 PR
 
-## 凭证与设置
+v3 将持久状态写入 `dsh-migrate/state`，每次迁移一份事件日志，并生成 `badge.json`。该分支只用于 bot 状态，不应合并到默认分支。
 
-不需要 `DEEPSEEK_API_KEY_DSH_MIGRATE_BOT`、模型余额或任何 LLM secret。GitHub 工作流只使用 GitHub 自动生成的 `GITHUB_TOKEN`：读取上游标签的任务只有 `contents: read`，发布任务单独申请 `contents: write`。本次接入使用的个人访问令牌不写入仓库、Git 配置或工作流 secret。
+- 工作树没有变化且全部检查通过：迁移结束为 `compatible`，目标版本直接记为已验证。
+- 有变化且检查通过：更新 `dsh-migrate/proposal` 并创建或更新可审阅的 PR。
+- 有变化但检查失败：仍发布同一 proposal，但 PR 为 draft，并附上失败信息；bot 不尝试修复。
+- 没有变化且检查失败：任务失败，没有可提交的 proposal。
+- proposal 合并后对应版本才记为已验证；关闭但不合并则不验证。
 
-因为你选择**通过检查后直接提交默认分支**，不需要开启 Actions 创建 / 审批 PR 的权限。仓库需保持 Actions 可运行，并允许该工作流写入默认分支；若日后开启分支保护导致普通推送被拒绝，需按保护策略改为 PR 方式。
+新版本通常复用同一个 proposal、Issue 和 PR，而不是不断新建。若维护者已在 proposal 分支追加提交，v3 不会强制覆盖这些提交。
 
-## 检查失败时
+## 项目专用检查
 
-任何版本解析、GitHub API、Go 测试、bot 检查、清单摘要或推送错误都会使工作流失败。失败时不会发布升级，不会调用 LLM 修复；查看运行日志和 `dsh-check-logs` artifact 后由维护者处理。该 artifact 保留 7 天，包含 bot 的完整 mechanical 检查日志，以及真实 Web Host / 原生 IPC 探针能产生的诊断。
+工作流内联的迁移配置用以下命令替换 v3 的默认 mechanical suite，任一失败都会停止迁移：
 
-bot 的启动探针使用占位凭证和不可用的本地模型端点，目的是证明插件加载和激活，不发送实际模型请求。[官方检查实现](https://github.com/royenheart/dsh-migrate-bot/blob/v1.0.0-rc.4/src/activities/check-tree.ts)与[启动探针](https://github.com/royenheart/dsh-migrate-bot/blob/v1.0.0-rc.4/src/verify/boot.ts)说明了这一点。
+1. `npm run check`
+2. `npm test`
+3. `go -C cli test ./...`
+4. 编译 Linux 静态原生 CLI 到 `.tmp/dsh-workspace-probe`
+5. 运行[真实 Web Host 探针](../scripts/check-dsh-host.mjs)
 
-这里只使用 bot 的检查能力，不使用它的 proposal / state / merge-report / preview 流程，也不创建对应状态分支。
+本插件的硬依赖 `workspaceRegistry` 来自 DSH Web composition。v3 的内置 headless boot profile 不提供该服务，而本插件又没有 `dsh.client` 浏览器入口，因此配置关闭内置 `boot` / `web` 检查，改用必须成功的项目专用探针：
+
+- 从固定的 v3 Action checkout 导入 `ensureDsh` 与 `startWebHost`。
+- 安装并启动本次迁移已解析出的目标 DSH，在真实 Web profile 中加载插件。
+- 等待 Web server-ready 后，通过刚编译的独立原生 CLI 执行只读 `ping`。
+- 同时校验 IPC 服务名 `dsh-workspace` 与协议版本 `1`；只有 Web 启动和 IPC 身份都正确才通过。
+
+探针不打开浏览器。它使用占位 API key 和不可用的本地模型端点，只验证 composition 与插件激活，不会发送真实模型请求。v3 在运行 mechanical 命令前也会移除 Action 持有的凭证。
+
+## 权限与仓库设置
+
+不需要 DeepSeek API key、模型余额或任何 LLM secret。工作流只把 GitHub 自动生成的 `GITHUB_TOKEN` 交给 v3，并申请：
+
+- `contents: write`：写 state / proposal 分支；
+- `issues: write`：创建或更新迁移 Issue；
+- `pull-requests: write`：创建、更新以及切换 proposal PR 的 draft 状态。
+
+仓库需在 **Settings → Actions → General → Workflow permissions** 中启用 **Allow GitHub Actions to create and approve pull requests**，否则 proposal 分支和 Issue 可能已经写入，但创建 PR 会返回 HTTP 403。
+
+## 失败与诊断
+
+v3 在第一个失败检查处停止，不重试、不调用 LLM、不改插件源码。摘要和 proposal 会保留有界的错误片段；完整检查日志同时上传为 `dsh-migrate-check-logs` artifact，保留 7 天。Web 启动 URL 中的会话 token 在落盘前会被清除。
 
 ## 本地验证
 
@@ -54,11 +84,9 @@ bot 的启动探针使用占位凭证和不可用的本地模型端点，目的�
 npm run check
 npm test
 go -C cli test ./...
-
-# 只查看机械升级计划，不写入包清单
-node scripts/dsh-migrate.mjs --target 0.2.2-rc.1 --dry-run
+node --check scripts/check-dsh-host.mjs
 ```
 
-[回归测试](../test/dsh-migrate.test.mjs)覆盖预发布版本排序、分页查询、非法输入、拒绝降级、兼容上界、清单更新、dry run 和无 LLM 工作流约束。完整目标 DSH 的启动检查由 GitHub 的 Linux Docker runner 执行，不会启动或修改你的当前 DSH profile。
+完整目标 DSH 的 Web Host / IPC 检查需要 v3 Action 提供已编译的检查模块和目标版本环境变量，正常由 GitHub 的 Linux runner 执行，不会启动或修改本机当前的 DSH profile。
 
-所有 Action 固定到已核实的提交 SHA，bot 版本固定为 `v1.0.0-rc.4`。升级 bot 本身需另行更新其 SHA 和配置；DSH 目标版本则自动跟随 `latest`。
+[回归测试](../test/dsh-migrate.test.mjs)覆盖 v3 工作流约束、内联配置的键与检查命令、`>=0.2.0` 下限保持，以及 Web profile 与 IPC 握手的失败路径。升级 bot 本身时需重新核对 v3 schema、`@v3` 指向的版本与这些项目专用导入路径。
