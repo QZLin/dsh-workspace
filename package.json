@@ -6,10 +6,10 @@
   "license": "MIT",
   "engines": {
     "node": ">=22",
-    "dsh": ">=0.2.0 <0.3.0"
+    "dsh": ">=0.2.0 <0.3.0 || ^0.2.3-alpha.2"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-workspace": ">=0.2.0 <0.3.0"
+    "@deepseek-ai/dsh-workspace": ">=0.2.0 <0.3.0 || ^0.2.3-alpha.2"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-workspace": {
